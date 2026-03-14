@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>GuardianGrid — Live Tracking</title>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+:root{
+  --bg:#07090e;--s1:#0c1120;--border:#1c2d45;
+  --red:#e5172b;--green:#00cc66;--green-lo:#002b16;
+  --amber:#f59e0b;--blue:#3b82f6;
+  --text:#c0d4ee;--dim:#4a6580;--muted:#283848;
+  --mono:'IBM Plex Mono',monospace;--head:'Barlow Condensed',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--head);min-height:100vh;display:flex;flex-direction:column;max-width:480px;margin:0 auto}
+
+/* TOP */
+.topbar{
+  background:var(--red);padding:10px 16px;
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
+  animation:alert-pulse 1.5s ease-in-out infinite;
+}
+.topbar.ended{background:#333!important;animation:none!important}
+@keyframes alert-pulse{0%,100%{background:var(--red)}50%{background:#8a0010}}
+.logo{font-family:var(--head);font-weight:900;font-size:16px;letter-spacing:3px;color:#fff}
+.type-badge{
+  margin-left:auto;font-family:var(--mono);font-size:10px;
+  background:rgba(0,0,0,.3);padding:3px 9px;color:#fff;letter-spacing:1px;
+}
+
+/* MAP */
+#map{height:255px;width:100%;flex-shrink:0}
+
+/* STATUS BAR */
+.status-bar{
+  background:var(--s1);border-bottom:1px solid var(--border);
+  padding:7px 14px;display:flex;align-items:center;gap:10px;
+  font-family:var(--mono);font-size:10px;color:var(--blue);flex-shrink:0;
+}
+.ldot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-right:5px;animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+.coords{flex:1}
+.updated{font-size:9px;color:var(--dim)}
+.reconn{display:none;font-size:9px;padding:2px 6px;background:var(--amber);color:#000}
+.reconn.on{display:block}
+
+/* ENDED OVERLAY */
+.ended-box{display:none;margin:10px 14px;background:#111;border:1px solid #333;padding:14px;text-align:center}
+.ended-box.on{display:block}
+.ended-box h3{font-family:var(--head);font-weight:900;font-size:19px;color:#777;letter-spacing:2px;margin-bottom:5px}
+.ended-box p{font-family:var(--mono);font-size:9px;color:var(--dim)}
+
+/* ERROR */
+.err-bar{display:none;align-items:center;gap:8px;margin:7px 14px;padding:8px 12px;background:#100800;border:1px solid var(--amber)}
+.err-bar.on{display:flex}
+.err-bar span{font-family:var(--mono);font-size:9px;color:var(--amber);flex:1}
+.retry{background:var(--amber);color:#000;border:none;font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer}
+
+/* PANEL */
+.panel{padding:12px 14px;display:flex;flex-direction:column;gap:9px;flex:1}
+.person-card{background:var(--s1);border:1px solid var(--border);padding:11px 13px;display:flex;gap:11px;align-items:flex-start}
+.av{width:42px;height:42px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;flex-shrink:0}
+.pname{font-size:19px;font-weight:900;letter-spacing:1px}
+.psub{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:1px;margin-top:2px}
+
+/* MEDICAL */
+.med-card{background:#07130a;border:1px solid rgba(0,204,102,.22);padding:10px 13px}
+.med-title{font-family:var(--mono);font-size:9px;color:var(--green);letter-spacing:2px;margin-bottom:6px}
+.med-row{display:flex;gap:5px;flex-wrap:wrap}
+.med-pill{background:rgba(0,204,102,.07);border:1px solid rgba(0,204,102,.2);color:var(--green);font-family:var(--mono);font-size:9px;padding:3px 8px;letter-spacing:.5px}
+
+/* ACTIONS */
+.action-row{display:flex;gap:8px}
+.btn-respond{
+  flex:1;background:var(--green);color:#000;border:none;
+  font-family:var(--head);font-weight:900;font-size:15px;letter-spacing:2px;padding:13px;cursor:pointer;transition:all .2s;
+}
+.btn-respond:hover{background:#00b055}
+.btn-respond.done{background:var(--green-lo);color:var(--green);pointer-events:none;font-size:11px}
+.btn-call{background:transparent;border:1px solid var(--red);color:var(--red);font-family:var(--head);font-weight:900;font-size:12px;letter-spacing:1px;padding:13px 14px;cursor:pointer;flex-shrink:0}
+.btn-call:hover{background:rgba(229,23,43,.09)}
+
+/* RESPONDERS */
+.rlog{background:var(--s1);border:1px solid var(--border);padding:10px 12px}
+.rlog h3{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:2px;margin-bottom:6px}
+.rentry{font-family:var(--mono);font-size:10px;color:var(--green);padding:3px 0;border-bottom:1px solid rgba(0,204,102,.09);display:flex;align-items:center;gap:8px}
+.rentry:last-child{border-bottom:none}
+.rtime{font-size:9px;color:var(--dim);margin-left:auto}
+
+.footer{font-family:var(--mono);font-size:8px;color:var(--dim);text-align:center;padding:10px;letter-spacing:1px}
+
+/* TOAST */
+.toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  background:var(--s1);border:1px solid var(--border);color:var(--text);
+  font-family:var(--mono);font-size:10px;padding:8px 13px;z-index:200;
+  animation:slide-up .2s ease-out;white-space:nowrap;pointer-events:none;
+}
+.toast.success{border-color:var(--green);color:var(--green)}
+.toast.warn{border-color:var(--amber);color:var(--amber)}
+@keyframes slide-up{from{transform:translateX(-50%) translateY(15px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}
+  </style>
+</head>
+<body>
+
+<div class="topbar" id="topbar">
+  <div class="logo">GUARDIAN<span style="color:rgba(255,255,255,.6)">GRID</span></div>
+  <div class="type-badge" id="typeBadge">🚨 LOADING…</div>
+</div>
+
+<div id="map"></div>
+
+<div class="status-bar">
+  <span><span class="ldot" id="ldot"></span>LIVE</span>
+  <span class="coords" id="coords">–</span>
+  <span class="updated" id="updated">–</span>
+  <span class="reconn" id="reconn">RECONNECTING</span>
+</div>
+
+<div class="ended-box" id="endedBox">
+  <h3>ALERT RESOLVED</h3>
+  <p>Emergency resolved. Tracking session closed.</p>
+</div>
+<div class="err-bar" id="errBar">
+  <span>⚠ Connection lost to tracking server</span>
+  <button class="retry" onclick="retry()">RETRY</button>
+</div>
+
+<div class="panel">
+  <div class="person-card">
+    <div class="av" id="pAv">A</div>
+    <div>
+      <div class="pname" id="pName">Loading…</div>
+      <div class="psub" id="pSub">ALERT ID: –</div>
+    </div>
+  </div>
+
+  <div class="med-card">
+    <div class="med-title">◆ MEDICAL PROFILE</div>
+    <div class="med-row" id="medRow"></div>
+  </div>
+
+  <div class="action-row">
+    <button class="btn-respond" id="respondBtn" onclick="markResponding()">✅ I'M RESPONDING</button>
+    <button class="btn-call" onclick="window.open('tel:112')">📞 112</button>
+  </div>
+
+  <div class="rlog" id="rlog" style="display:none">
+    <h3>◆ RESPONDERS</h3>
+    <div id="rlist"></div>
+  </div>
+
+  <div class="footer">Auto-updates every 5s · GuardianGrid Emergency</div>
+</div>
+
+<script>
+// ── PARAMS ────────────────────────────────────────────────────────────────────
+const P   = new URLSearchParams(location.search);
+const AID = P.get('alertId') || 'demo';
+const LAT = parseFloat(P.get('lat'))  || 51.505;
+const LNG = parseFloat(P.get('lng'))  || -0.09;
+const WHO = P.get('contact')  || 'Contact';
+const TYP = P.get('type')     || 'UNKNOWN';
+const BLD = P.get('blood')    || 'Unknown';
+const ALG = P.get('allergies')|| 'None';
+const CON = P.get('conditions')|| 'None';
+
+// User profile data
+const USER_NAME = P.get('userName') || 'User';
+const USER_PHONE = P.get('userPhone') || '—';
+const USER_BLOOD = P.get('bloodGroup') || BLD;
+const USER_ALLERGIES = P.get('allergies') || ALG;
+const USER_CONDITIONS = P.get('conditions') || CON;
+const USER_CONTACTS = tryParseJSON(P.get('emergencyContacts')) || [
+  { name: '', phone: '' },
+  { name: '', phone: '' }
+];
+
+function tryParseJSON(str) {
+  try { return str ? JSON.parse(decodeURIComponent(str)) : null; } catch(_) { return null; }
+}
+
+let responding = false, ended = false, errCount = 0;
+const known = new Set();
+let trail = null, history = [[LAT,LNG]];
+const MOCK = [[51.505,-0.09],[51.506,-0.091],[51.507,-0.089],[51.508,-0.092],[51.506,-0.094],[51.504,-0.093]];
+let mi = 0;
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+ge('typeBadge').textContent = '🚨 ' + TYP + ' EMERGENCY';
+ge('pName').textContent = USER_NAME;
+ge('pSub').textContent = 'ID: '+AID.slice(-8).toUpperCase()+' · Phone: '+USER_PHONE;
+ge('coords').textContent = LAT.toFixed(4)+', '+LNG.toFixed(4);
+
+const medItems = [
+  {l:'Blood',v:USER_BLOOD},
+  {l:'Allergies',v:USER_ALLERGIES},
+  {l:'Conditions',v:USER_CONDITIONS}
+];
+// Add emergency contacts if available
+USER_CONTACTS.forEach((c,i) => {
+  if (c.name || c.phone) {
+    medItems.push({l:'Contact '+(i+1),v:(c.name || '—')+' '+((c.phone || '').slice(-4) || '')});
+  }
+});
+ge('medRow').innerHTML = medItems.map(p=>'<div class="med-pill">'+p.l+': '+p.v+'</div>').join('');
+
+// ── MAP ───────────────────────────────────────────────────────────────────────
+const map = L.map('map',{zoomControl:false,attributionControl:false}).setView([LAT,LNG],15);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
+map.invalidateSize();
+
+// Inject pulse animation
+const st = document.createElement('style');
+st.textContent='@keyframes pulsar{0%{transform:scale(1);opacity:.7}100%{transform:scale(2.8);opacity:0}}';
+document.head.appendChild(st);
+
+const pulseIcon = L.divIcon({
+  html:`<div style="position:relative">
+    <div style="width:16px;height:16px;background:#e5172b;border-radius:50%;border:2.5px solid #fff;box-shadow:0 0 16px rgba(229,23,43,.9)"></div>
+    <div style="position:absolute;top:-7px;left:-7px;width:30px;height:30px;border:2px solid rgba(229,23,43,.35);border-radius:50%;animation:pulsar 2s ease-out infinite"></div>
+  </div>`,
+  iconSize:[16,16],iconAnchor:[8,8],className:'',
+});
+const marker = L.marker([LAT,LNG],{icon:pulseIcon}).addTo(map);
+const circ = L.circle([LAT,LNG],{color:'rgba(229,23,43,.12)',fillColor:'rgba(229,23,43,.04)',fillOpacity:1,radius:80}).addTo(map);
+
+function moveTo(lat,lng) {
+  marker.setLatLng([lat,lng]); circ.setLatLng([lat,lng]);
+  map.panTo([lat,lng],{animate:true,duration:.5});
+  ge('coords').textContent = lat.toFixed(4)+', '+lng.toFixed(4);
+  history.push([lat,lng]);
+  if (!trail) trail=L.polyline(history,{color:'#e5172b',weight:2,opacity:.5,dashArray:'4 3'}).addTo(map);
+  else trail.setLatLngs(history);
+}
+
+// ── LOCATION POLL (5s) ────────────────────────────────────────────────────────
+async function pollLoc() {
+  if (ended) return;
+  try {
+    const r = await fetch('http://localhost:3000/api/location/'+AID,{signal:AbortSignal.timeout(4000)});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json(); errCount=0;
+    ge('errBar').classList.remove('on');
+    ge('reconn').classList.remove('on');
+
+    if (d.latest) {
+      const {lat:la,lng:ln,ts} = d.latest;
+      if(la&&ln) moveTo(la,ln);
+      if(ts){const t=new Date(ts);ge('updated').textContent=isNaN(t)?'—':'updated: '+t.toLocaleTimeString();}
+      // Draw full trail from server
+      if(d.trail&&d.trail.length>1){
+        const pts=d.trail.map(p=>[p.lat,p.lng]);
+        if(!trail) trail=L.polyline(pts,{color:'#e5172b',weight:2,opacity:.5,dashArray:'4 3'}).addTo(map);
+        else trail.setLatLngs(pts);
+      }
+    } else {
+      // Demo mode: use mock path
+      mi=(mi+1)%MOCK.length; const[la,ln]=MOCK[mi]; moveTo(la,ln);
+      ge('updated').textContent='updated: '+new Date().toLocaleTimeString()+' (demo)';
+    }
+  } catch(e) {
+    errCount++;
+    if(errCount>=3){ge('errBar').classList.add('on');ge('reconn').classList.add('on');}
+    // Fallback mock movement
+    mi=(mi+1)%MOCK.length; const[la,ln]=MOCK[mi]; moveTo(la,ln);
+    ge('updated').textContent=new Date().toLocaleTimeString()+' (offline)';
+  }
+}
+
+// ── RESPONDER POLL (5s) ───────────────────────────────────────────────────────
+// Phase 5 FIX: contact tracking page shows all other responders in real-time
+async function pollResponders() {
+  if(ended) return;
+  try {
+    const r=await fetch('http://localhost:3000/api/respond/'+AID,{signal:AbortSignal.timeout(4000)});
+    if(!r.ok) return;
+    const d=await r.json();
+    (d.responders||[]).forEach(resp=>{
+      const name=typeof resp==='string'?resp:resp.contact;
+      const ts  =typeof resp==='object'?resp.ts:null;
+      if(!known.has(name)){
+        known.add(name);
+        addResponder(name,ts);
+        if(known.size>0) ge('rlog').style.display='block';
+        if(known.has(WHO)===false) toast('✅ '+name+' is responding','success');
+        if(navigator.vibrate) navigator.vibrate([80,40,80]);
+      }
+    });
+  } catch(_){}
+}
+
+// ── ALERT STATUS POLL (8s) ────────────────────────────────────────────────────
+// Phase 5 FIX: detect when alert is ended and update UI accordingly
+async function pollStatus() {
+  try {
+    const r=await fetch('http://localhost:3000/api/alert/'+AID,{signal:AbortSignal.timeout(4000)});
+    if(!r.ok) return;
+    const d=await r.json();
+    if(d.status==='ended'&&!ended){
+      ended=true;
+      clearInterval(locInt); clearInterval(respInt); clearInterval(statInt);
+      ge('topbar').classList.add('ended');
+      ge('typeBadge').textContent='✅ ALERT RESOLVED';
+      ge('ldot').style.cssText='background:#555;animation:none';
+      ge('endedBox').classList.add('on');
+      ge('respondBtn').classList.add('done'); ge('respondBtn').textContent='ALERT ENDED';
+      ge('updated').textContent='resolved: '+new Date().toLocaleTimeString();
+      toast('Alert resolved','success',4000);
+    }
+    // Sync server responders
+    (d.responders||[]).forEach(resp=>{
+      const name=typeof resp==='string'?resp:resp.contact;
+      const ts  =typeof resp==='object'?resp.ts:null;
+      if(!known.has(name)){known.add(name);addResponder(name,ts);ge('rlog').style.display='block';}
+    });
+  } catch(_){}
+}
+
+function retry(){errCount=0;ge('reconn').classList.add('on');ge('errBar').classList.remove('on');pollLoc();setTimeout(()=>ge('reconn').classList.remove('on'),3000);}
+
+// ── MARK RESPONDING ───────────────────────────────────────────────────────────
+async function markResponding() {
+  if(responding||ended) return;
+  responding=true;
+  ge('respondBtn').textContent='✅ YOU ARE RESPONDING';
+  ge('respondBtn').classList.add('done');
+  addResponder(WHO, new Date().toISOString());
+  ge('rlog').style.display='block';
+  const r=await postData('/api/respond',{alertId:AID,contact:WHO});
+  toast(r&&!r.error?'✅ Response sent':'⚠ Failed — will retry', r&&!r.error?'success':'warn');
+}
+
+function addResponder(name,ts){
+  const d=document.createElement('div'); d.className='rentry';
+  const t=ts?new Date(ts):new Date();
+  d.innerHTML='▶ '+name+' — EN ROUTE<span class="rtime">'+(isNaN(t)?'—':t.toLocaleTimeString())+'</span>';
+  ge('rlist').appendChild(d);
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function ge(id){return document.getElementById(id)}
+function toast(msg,type,dur=3000){
+  const d=document.createElement('div'); d.className='toast '+(type||''); d.textContent=msg;
+  document.body.appendChild(d); setTimeout(()=>d.remove(),dur);
+}
+async function postData(ep,data){
+  try{
+    const r=await fetch('http://localhost:3000'+ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(5000)});
+    if(!r.ok) throw new Error(r.statusText);
+    return await r.json();
+  }catch(e){return{error:e.message};}
+}
+
+// ── START POLLING ─────────────────────────────────────────────────────────────
+pollLoc(); pollResponders(); pollStatus();
+const locInt  = setInterval(pollLoc,       5000);
+const respInt = setInterval(pollResponders,5000);
+const statInt = setInterval(pollStatus,    8000);
+</script>
+</body>
+</html>
