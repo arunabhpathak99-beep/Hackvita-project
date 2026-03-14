@@ -1,0 +1,14 @@
+{
+  "name": "guardiangrid-final",
+  "version": "3.0.0",
+  "description": "GuardianGrid — Phase 1-6 Reliability-Engineered Emergency Alert MVP",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev":   "npx nodemon server.js"
+  },
+  "dependencies": {
+    "cors":    "^2.8.5",
+    "express": "^4.18.2"
+  }
+}
